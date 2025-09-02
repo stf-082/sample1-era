@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sample Escape Game</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color:#000; margin:0; padding:0; }
+  header { position:sticky; top:0; background:#1eb6af; color:#fff; padding:10px; text-align:center; font-weight:bold; }
+  .lock-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:1rem; padding:1rem; }
+  .lock-card { border:3px solid #1eb6af; border-radius:1rem; padding:1rem; background:#fff; text-align:center; }
+  .solved { border-color:green; background:#eaffea; }
+  button, select, input { background:#1eb6af; color:#fff; border:none; padding:6px; border-radius:6px; margin-top:10px; cursor:pointer; }
+  .hidden { display:none; }
+  .drag-container { display:flex; gap:1rem; }
+  .bin, .slot { border:2px dashed #1eb6af; min-height:40px; padding:5px; margin:5px; border-radius:6px; background:#f9f9f9; }
+  .draggable { padding:5px; margin:3px; background:#1eb6af; color:#fff; border-radius:4px; cursor:grab; }
+</style>
+</head>
+<body>
+<header>
+  Sample Escape Game – Solve the locks to win! <span id="timer">30:00</span>
+</header>
+
+<main>
+  <div class="lock-grid" id="lockGrid"></div>
+</main>
+
+<script>
+let timeLeft = 30*60;
+let timerEl=document.getElementById("timer");
+let timer=setInterval(()=>{let m=Math.floor(timeLeft/60), s=timeLeft%60;
+  timerEl.textContent=`${m}:${s.toString().padStart(2,"0")}`; 
+  if(timeLeft--<=0) clearInterval(timer)},1000);
+
+const locks = [
+ {name:"5-Digit Number Lock", type:"number", length:5, solution:"22801", clue:"Zip Code for 100 Mt. Clinton Pike", url:""},
+ {name:"8-Letter Word Lock", type:"word", length:8, solution:"JACKSON", clue:"See beach picture", url:"https://docs.google.com/document/d/1ctPKTfnK7QMzi_BlJl_rSaM9mxJahfgkMAekJzmlGBM/edit?usp=sharing"},
+ {name:"6-Direction Lock", type:"direction", length:6, solution:["UP","UP","DOWN","UP","DOWN","DOWN"], clue:"See image", url:"https://docs.google.com/document/d/1ctPKTfnK7QMzi_BlJl_rSaM9mxJahfgkMAekJzmlGBM/edit?usp=sharing"},
+ {name:"5-Color Lock", type:"color", length:5, solution:["Red","Orange","Yellow","Green","Blue"], clue:"See image", url:"https://docs.google.com/document/d/1ctPKTfnK7QMzi_BlJl_rSaM9mxJahfgkMAekJzmlGBM/edit?usp=sharing"},
+ {name:"4-Shape Lock", type:"shape", length:4, solution:["Star","Square","Triangle","Rhombus"], clue:"See image", url:"https://docs.google.com/document/d/1ctPKTfnK7QMzi_BlJl_rSaM9mxJahfgkMAekJzmlGBM/edit?usp=sharing"},
+ {name:"Disney Sort", type:"sort", solution:{
+   "Villains":["Cruella","Scar","Jafar","Ursula"],
+   "Princesses":["Belle","Mulan","Moana","Ariel"],
+   "Big 5":["Mickey","Minnie","Donald","Goofy","Pluto"]}, clue:"Sort these Disney words"},
+ {name:"ABC Order Lock", type:"order", solution:["Airplane","Bike","Boat","Bus","Car","Train"], clue:"Put these words in alphabetical order"},
+ {name:"Antonym Sort", type:"sort", solution:{
+   "BIG":["LITTLE"], "TOP":["BOTTOM"], "LEFT":["RIGHT"], "UP":["DOWN"], "IN":["OUT"]}, clue:"Match these antonyms"}
+];
+
+const lockGrid=document.getElementById("lockGrid");
+
+locks.forEach((lock,i)=>{
+  let card=document.createElement("div");
+  card.className="lock-card"; card.id="lock"+i;
+  card.innerHTML=`<h3>${lock.name}</h3><p>${lock.clue}</p>`+
+  (lock.url?`<p><a href="${lock.url}" target="_blank">Clue Link</a></p>`:"")+
+  buildLockUI(lock,i);
+  lockGrid.appendChild(card);
+});
+
+function buildLockUI(lock,i){
+  let html="";
+  if(lock.type==="number"){
+    html+=`<input id="ans${i}" placeholder="Enter ${lock.length}-digit code">`;
+  } else if(lock.type==="word"){
+    html+=`<input id="ans${i}" placeholder="Enter word">`;
+  } else if(lock.type==="direction"){
+    let dirs=["UP","DOWN","LEFT","RIGHT"];
+    for(let j=0;j<lock.length;j++){
+      html+=`<select id="ans${i}-${j}">`+dirs.map(d=>`<option>${d}</option>`).join("")+`</select>`;
+    }
+  } else if(lock.type==="color"){
+    let colors=["🟥 Red","🟧 Orange","🟨 Yellow","🟩 Green","🟦 Blue","🟪 Purple","⚫ Black","⚪ White"];
+    for(let j=0;j<lock.length;j++){
+      html+=`<select id="ans${i}-${j}">`+shuffle(colors).map(c=>`<option>${c}</option>`).join("")+`</select>`;
+    }
+  } else if(lock.type==="shape"){
+    let shapes=["▲ Triangle","■ Square","● Circle","★ Star","◆ Rhombus"];
+    for(let j=0;j<lock.length;j++){
+      html+=`<select id="ans${i}-${j}">`+shuffle(shapes).map(s=>`<option>${s}</option>`).join("")+`</select>`;
+    }
+  } else if(lock.type==="sort"||lock.type==="order"){
+    let items=[];
+    if(lock.type==="sort"){ Object.values(lock.solution).forEach(arr=>items.push(...arr)); }
+    else items=[...lock.solution];
+    items=shuffle(items);
+    html+=`<div class="drag-container"><div>`+items.map(x=>`<div class="draggable" draggable="true">${x}</div>`).join("")+`</div>`;
+    if(lock.type==="sort"){
+      html+=`<div>`+Object.keys(lock.solution).map(cat=>`<div class="bin" data-cat="${cat}">${cat}</div>`).join("")+`</div>`;
+    } else {
+      html+=`<div>`+lock.solution.map((_,j)=>`<div class="slot" data-slot="${j}">Slot ${j+1}</div>`).join("")+`</div>`;
+    }
+    html+=`</div>`;
+  }
+  html+=`<br><button onclick="checkLock(${i})">Check Answer</button><p id="msg${i}"></p>`;
+  return html;
+}
+
+function shuffle(arr){ return [...arr].sort(()=>Math.random()-0.5); }
+
+function checkLock(i){
+  let lock=locks[i]; let ok=false;
+  if(lock.type==="number"||lock.type==="word"){
+    let ans=document.getElementById("ans"+i).value.trim().toUpperCase();
+    ok=(ans===lock.solution.toString().toUpperCase());
+  } else if(lock.type==="direction"||lock.type==="color"||lock.type==="shape"){
+    let ans=[]; for(let j=0;j<lock.length;j++) ans.push(document.getElementById(`ans${i}-${j}`).value.split(" ").pop());
+    ok=JSON.stringify(ans.map(a=>a.toUpperCase()))===JSON.stringify(lock.solution.map(a=>a.toUpperCase()));
+  } else if(lock.type==="sort"){
+    ok=true;
+    for(let cat in lock.solution){
+      let bin=document.querySelector(`#lock${i} .bin[data-cat='${cat}']`);
+      let kids=[...bin.querySelectorAll(".draggable")].map(e=>e.textContent);
+      if(JSON.stringify(kids.sort())!==JSON.stringify(lock.solution[cat].sort())) ok=false;
+    }
+  } else if(lock.type==="order"){
+    let slots=document.querySelectorAll(`#lock${i} .slot`);
+    let ans=[...slots].map(s=>s.querySelector(".draggable")?.textContent||"");
+    ok=JSON.stringify(ans)===JSON.stringify(lock.solution);
+  }
+  document.getElementById("msg"+i).textContent=ok?"✅ Correct!":"Please Try Again.";
+  if(ok) document.getElementById("lock"+i).classList.add("solved");
+}
+
+// Drag/drop
+document.addEventListener("dragstart",e=>{
+  if(e.target.classList.contains("draggable")) e.dataTransfer.setData("text/plain", e.target.id=e.target.textContent+Math.random());
+});
+document.addEventListener("dragover",e=>{if(e.target.classList.contains("bin")||e.target.classList.contains("slot")) e.preventDefault();});
+document.addEventListener("drop",e=>{
+  if(e.target.classList.contains("bin")||e.target.classList.contains("slot")){
+    let id=e.dataTransfer.getData("text/plain"); let el=document.querySelector("#"+CSS.escape(id));
+    e.target.appendChild(el);
+  }
+});
+</script>
+</body>
+</html>
